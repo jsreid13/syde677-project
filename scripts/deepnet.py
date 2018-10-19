@@ -37,12 +37,6 @@ TRAIN_SAMPLES = 8000  # [3000, 6000, 15000]
 TEST_SAMPLES = 800
 USE_ATTN = False  # [True, False]
 
-# image_bbox_df = pd.read_csv('../input/lung-opacity-overview/image_bbox_full.csv')
-# image_bbox_df['path'] = image_bbox_df['path'].map(lambda x:
-#                              x.replace('input',
-#                                        'input/rsna-pneumonia-detection-challenge'))
-
-
 # Labels contains the target (1=pneumonia, 0=healthy) and bounding boxes
 # if that patient has pneumonia
 bbox_df = pd.read_csv('../input/stage_1_train_labels.csv')
@@ -78,12 +72,10 @@ def get_header_info(patientId):
     return pd.Series(output)
 
 
-comb_bbox_df.columns.values
+# Extract all of the dicom header info as columns into a dataframe
 header_df = comb_bbox_df.apply(lambda x: get_header_info(x['patientId']), 1)
+# Convert the age from string to int
 header_df['Patient\'s Age'] = header_df['Patient\'s Age'].map(int)
-header_df['Patient\'s Age'].hist()
-header_df.columns.values
-header_df.shape[0]
 
 header_df = header_df.groupby('Patient ID').head(1).reset_index()
 # This contains all information from the header and from the label file
@@ -113,16 +105,8 @@ image_full_df = pd.merge(header_df, comb_bbox_df,
 #  pylab.axis('off')
 
 
-# Predict Pneumonia
-class_enc = LabelEncoder()
-image_full_df['class_idx'] = class_enc.fit_transform(image_full_df['class'])
-encoder = OneHotEncoder(sparse=False)
-image_full_df['class_vec'] = encoder.fit_transform(
-    image_full_df['class_idx'].values.reshape(-1, 1)).tolist()
-
-
 def group_bbox(df):
-    """Group x, y, w, h together for each image
+    """Group bounding box x, y, w, h together for each image
 
     :df: Pandas dataframe
     :returns: Pandas series
@@ -133,6 +117,7 @@ def group_bbox(df):
                       })
 
 
+# Create new dataframe with a column bbox which contains the info about the bounding box
 grouped_bbox_df = comb_bbox_df.groupby('patientId').apply(group_bbox)
 grouped_bbox_df.set_index('patientId')
 
@@ -228,9 +213,12 @@ class generator(Sequence):
             return int(len(self.df) / self.batch_size)
 
 
+# Used to generate a list of rows for the train and test sets, straitified so that they have
+# the same number of positive and negative cases in the Target column to reduce bias
 skf = StratifiedKFold(n_splits=2)
 train_ids = []
 valid_ids = []
+# Extract patient id and target columns as lists
 pid_vec = np.stack(grouped_bbox_df['patientId'].values)[:, 0]
 target_vec = np.stack(grouped_bbox_df['target'].values)[:, 0]
 for t_ids, v_ids in skf.split(pid_vec, target_vec):
@@ -258,12 +246,19 @@ valid_gen = generator(folder,
                       predict=False
                       )
 
+# Get a sample output from the generator to analyze
 train_src, train_tar = next(train_gen)
 valid_src, valid_tar = next(valid_gen)
 
+# Display the sample
 print(train_src.shape, train_tar.shape)
 fig, m_axs = plt.subplots(2, 4, figsize=(16, 8))
 for (c_x, c_y, c_ax) in zip(train_src, train_tar, m_axs.flatten()):
     c_ax.imshow(c_x[:, :, 0], cmap='bone')
-    c_ax.set_title('%s' % class_enc.classes_[np.argmax(c_y)])
+    title = ''
+    if c_x == c_y:
+        title = 'Healthy'
+    else:
+        title = 'Pneumonia'
+    c_ax.set_title('%s' % title)
     c_ax.axis('off')
