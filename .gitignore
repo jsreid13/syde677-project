@@ -3,3 +3,4 @@ stage_1_sample_submission.csv
 scripts/dataset_analysis.py
 scripts/keras_generator.py
 scripts/.ipynb_checkpoints
+scripts/ex.py
